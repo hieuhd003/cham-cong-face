@@ -1,0 +1,244 @@
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Đăng ký khuôn mặt nhân viên</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f5f6f8;color:#222;font-family:Arial,sans-serif}
+.container{max-width:500px;margin:auto;padding:24px 16px}
+.card{background:white;border-radius:18px;padding:24px 20px;box-shadow:0 4px 20px #00000012}
+.title{text-align:center;font-size:23px;font-weight:bold;margin-bottom:8px}
+.subtitle{text-align:center;color:#666;font-size:14px;margin-bottom:24px}
+label{display:block;font-weight:bold;margin:14px 0 8px}
+select{width:100%;height:50px;border:1px solid #ddd;border-radius:10px;padding:0 12px;font-size:16px;background:white}
+.camera-box{display:none;margin-top:20px;border-radius:15px;overflow:hidden;background:#111}
+video{width:100%;display:block;transform:scaleX(-1)}
+.camera-status{margin-top:15px;padding:12px;border-radius:10px;background:#f1f3f5;text-align:center;color:#555;line-height:1.5}
+button{width:100%;height:52px;border:0;border-radius:10px;margin-top:15px;font-size:16px;font-weight:bold;cursor:pointer}
+.btn-camera{background:#111;color:white}
+.btn-register{background:#16753a;color:white;display:none}
+button:disabled{background:#aaa;cursor:not-allowed}
+.message{display:none;margin-top:18px;padding:14px;border-radius:10px;text-align:center;white-space:pre-line;line-height:1.5}
+.success{background:#e8f7ed;color:#16753a}
+.error{background:#fdecec;color:#c62828}
+.consent{display:flex;gap:9px;align-items:flex-start;font-weight:normal!important;line-height:1.5}
+.consent input{margin-top:4px}
+.small{font-size:12px;color:#777;line-height:1.5;margin-top:15px}
+</style>
+</head>
+<body>
+<div class="container">
+<div class="card">
+  <div class="title">ĐĂNG KÝ KHUÔN MẶT</div>
+  <div class="subtitle">Đăng ký khuôn mặt cho nhân viên</div>
+
+  <label for="employee">Chọn nhân viên</label>
+  <select id="employee">
+    <option value="">Đang tải danh sách...</option>
+  </select>
+
+  <div id="cameraBox" class="camera-box">
+    <video id="video" autoplay playsinline muted></video>
+  </div>
+
+  <div id="cameraStatus" class="camera-status">
+    Đang kết nối hệ thống...
+  </div>
+
+  <button id="cameraBtn" class="btn-camera" onclick="moCamera()">
+    MỞ CAMERA
+  </button>
+
+  <label class="consent">
+    <input type="checkbox" id="consent">
+    <span>Tôi đồng ý đăng ký và sử dụng dữ liệu đặc trưng khuôn mặt để xác minh chấm công.</span>
+  </label>
+
+  <button id="registerBtn" class="btn-register" onclick="dangKyKhuonMat()">
+    ĐĂNG KÝ KHUÔN MẶT
+  </button>
+
+  <div id="message" class="message"></div>
+  <div class="small">
+    Dữ liệu đặc trưng được tạo trên thiết bị và gửi về hệ thống chấm công.
+    Không đăng ký nếu nhân viên chưa được thông báo và đồng ý.
+  </div>
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script>
+/* THAY URL NÀY BẰNG URL WEB APP /exec CỦA BẠN */
+const API_URL = "DAN_URL_WEB_APP_CUA_BAN_VAO_DAY";
+const MODEL_URL = "https://justadudewhohacks.github.io/face-api.js/models";
+
+let stream = null;
+let modelsReady = false;
+let busy = false;
+
+function thongBao(text,type){
+  const el=document.getElementById('message');
+  el.textContent=text;
+  el.className='message '+type;
+  el.style.display='block';
+}
+function trangThai(text){
+  document.getElementById('cameraStatus').textContent=text;
+}
+
+function taiDanhSach(){
+  if(API_URL.includes('DAN_URL')){
+    trangThai('Bạn chưa điền URL Web App trong code.');
+    thongBao('Hãy sửa dòng API_URL trước khi sử dụng.','error');
+    return;
+  }
+  const callback='nhanDanhSach_'+Date.now();
+  const script=document.createElement('script');
+  const timer=setTimeout(()=>{
+    delete window[callback];
+    script.remove();
+    trangThai('Không tải được danh sách nhân viên.');
+    thongBao('Kiểm tra URL Web App và quyền truy cập.','error');
+  },15000);
+
+  window[callback]=function(res){
+    clearTimeout(timer);
+    script.remove();
+    delete window[callback];
+    if(!res || !res.success){
+      thongBao((res&&res.message)||'API không trả về danh sách.','error');
+      return;
+    }
+    const select=document.getElementById('employee');
+    select.innerHTML='<option value="">-- Chọn nhân viên --</option>';
+    (res.data||[]).forEach(nv=>{
+      const op=document.createElement('option');
+      op.value=nv.maNV;
+      op.textContent=nv.maNV+' - '+nv.hoTen;
+      select.appendChild(op);
+    });
+    trangThai('Đã tải danh sách. Đang tải bộ nhận diện...');
+  };
+  script.src=API_URL+'?action=employees&callback='+callback;
+  script.onerror=()=>{
+    clearTimeout(timer);
+    thongBao('Không kết nối được API nhân viên.','error');
+  };
+  document.head.appendChild(script);
+}
+
+async function taiModel(){
+  try{
+    if(!window.faceapi) throw new Error('Thư viện nhận diện chưa tải.');
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+    ]);
+    modelsReady=true;
+    trangThai('Đã sẵn sàng. Chọn nhân viên để bắt đầu.');
+  }catch(e){
+    trangThai('Không tải được bộ nhận diện.');
+    thongBao(e.message+' Kiểm tra mạng rồi tải lại trang.','error');
+  }
+}
+
+async function moCamera(){
+  const maNV=document.getElementById('employee').value;
+  if(!maNV){thongBao('Vui lòng chọn nhân viên trước.','error');return;}
+  if(!modelsReady){thongBao('Bộ nhận diện chưa sẵn sàng.','error');return;}
+  const btn=document.getElementById('cameraBtn');
+  btn.disabled=true;
+  try{
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      throw new Error('Trình duyệt không hỗ trợ camera hoặc trang chưa dùng HTTPS.');
+    }
+    if(stream) stream.getTracks().forEach(t=>t.stop());
+    stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:'user'},audio:false
+    });
+    const video=document.getElementById('video');
+    video.srcObject=stream;
+    document.getElementById('cameraBox').style.display='block';
+    await video.play();
+    trangThai('Camera đã mở. Đưa mặt vào giữa khung hình, đủ sáng.');
+    document.getElementById('registerBtn').style.display='block';
+    btn.textContent='CAMERA ĐÃ MỞ';
+    thongBao('','success');
+    document.getElementById('message').style.display='none';
+  }catch(e){
+    trangThai('Không mở được camera.');
+    thongBao('Lỗi camera: '+e.name+'\n'+e.message,'error');
+  }finally{btn.disabled=false;}
+}
+
+async function dangKyKhuonMat(){
+  if(busy)return;
+  const maNV=document.getElementById('employee').value;
+  const video=document.getElementById('video');
+  const btn=document.getElementById('registerBtn');
+  if(!maNV||!stream){thongBao('Chọn nhân viên và mở camera trước.','error');return;}
+  if(!document.getElementById('consent').checked){
+    thongBao('Nhân viên cần đồng ý trước khi đăng ký.','error');return;
+  }
+
+  busy=true;btn.disabled=true;btn.textContent='ĐANG PHÂN TÍCH...';
+  try{
+    const vectors=[];
+    for(let i=0;i<3;i++){
+      trangThai('Lần '+(i+1)+'/3: nhìn thẳng và giữ mặt ổn định.');
+      const result=await faceapi
+        .detectSingleFace(video,new faceapi.TinyFaceDetectorOptions({
+          inputSize:320,scoreThreshold:0.5
+        }))
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+      if(!result)throw new Error('Không thấy rõ khuôn mặt. Chỉnh ánh sáng và thử lại.');
+      vectors.push(Array.from(result.descriptor));
+      await new Promise(r=>setTimeout(r,700));
+    }
+
+    const avg=vectors[0].map((_,j)=>
+      vectors.reduce((sum,v)=>sum+v[j],0)/vectors.length
+    );
+    const payload={
+      action:'registerFace',
+      maNV:maNV,
+      faceId:'FACE_'+maNV,
+      faceData:JSON.stringify(avg)
+    };
+
+    trangThai('Đang gửi dữ liệu đăng ký...');
+    // Gửi POST dạng text/plain để tránh preflight CORS.
+    // no-cors không cho đọc phản hồi; cần kiểm tra kết quả trong Sheet.
+    await fetch(API_URL,{
+      method:'POST',
+      mode:'no-cors',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify(payload)
+    });
+
+    trangThai('Đã gửi yêu cầu. Hãy kiểm tra Google Sheets.');
+    thongBao(
+      'Đã gửi dữ liệu đăng ký.\nVì trình duyệt không đọc được phản hồi, hãy kiểm tra FACE_ID, FACE_DATA và NGAY_DANG_KY_FACE trong Sheet trước khi đăng ký người tiếp theo.',
+      'success'
+    );
+  }catch(e){
+    thongBao(e.message||'Không phân tích được khuôn mặt.','error');
+  }finally{
+    busy=false;btn.disabled=false;btn.textContent='ĐĂNG KÝ KHUÔN MẶT';
+  }
+}
+
+window.addEventListener('beforeunload',()=>{
+  if(stream)stream.getTracks().forEach(t=>t.stop());
+});
+
+taiDanhSach();
+taiModel();
+</script>
+</body>
+</html>
