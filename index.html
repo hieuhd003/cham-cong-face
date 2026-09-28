@@ -202,57 +202,82 @@ function say(message, type = "") {
 
 function updateStartButton() {
   startBtn.disabled =
-    !modelsReady || !agree.checked || !employee.value || running;
+    !modelsReady ||
+    !agree.checked ||
+    !employee.value ||
+    running ||
+    scanning ||
+    employee.disabled;
 }
 
 agree.addEventListener("change", updateStartButton);
 employee.addEventListener("change", updateStartButton);
 
+
 function loadEmployees() {
-  const callbackName =
-    "employeeCallback_" + Math.random().toString(36).slice(2);
+  return new Promise(function(resolve) {
+    const callbackName =
+      "employeeCallback_" + Math.random().toString(36).slice(2);
 
-  const script = document.createElement("script");
+    const script = document.createElement("script");
 
-  window[callbackName] = function(result) {
-    try {
-      if (!result || !result.success || !Array.isArray(result.data)) {
-        throw new Error("Danh sách nhân viên trả về không hợp lệ.");
+    employee.innerHTML =
+      '<option value="">Đang tải danh sách...</option>';
+    employee.value = "";
+    updateStartButton();
+
+    window[callbackName] = function(result) {
+      try {
+        if (!result || !result.success ||
+            !Array.isArray(result.data)) {
+          throw new Error("Danh sách nhân viên trả về không hợp lệ.");
+        }
+
+        employee.innerHTML =
+          '<option value="">-- Chọn nhân viên chưa đăng ký --</option>';
+
+        result.data.forEach(function(item) {
+          const option = document.createElement("option");
+          option.value = item.maNV;
+          option.textContent = item.maNV + " - " + item.hoTen;
+          employee.appendChild(option);
+        });
+
+        employee.value = "";
+        updateStartButton();
+
+        if (result.data.length === 0) {
+          say("Tất cả nhân viên đã đăng ký khuôn mặt.", "good");
+        } else {
+          say("Còn " + result.data.length +
+              " nhân viên chưa đăng ký khuôn mặt.");
+        }
+
+        resolve(true);
+      } catch (err) {
+        say("Lỗi danh sách: " + err.message, "bad");
+        resolve(false);
+      } finally {
+        delete window[callbackName];
+        script.remove();
       }
+    };
 
-      employee.innerHTML =
-        '<option value="">-- Chọn nhân viên --</option>';
-
-      result.data.forEach(function(item) {
-        const option = document.createElement("option");
-        option.value = item.maNV;
-        option.textContent = item.maNV + " - " + item.hoTen;
-        employee.appendChild(option);
-      });
-
-      say("Đã tải danh sách nhân viên. Hãy chọn nhân viên.");
-      updateStartButton();
-    } catch (err) {
-      say(err.message, "bad");
-    } finally {
+    script.onerror = function() {
+      say("Không tải được danh sách nhân viên. Hãy kiểm tra kết nối.", "bad");
       delete window[callbackName];
       script.remove();
-    }
-  };
+      resolve(false);
+    };
 
-  script.onerror = function() {
-    say("Không tải được danh sách. Kiểm tra URL Apps Script và quyền triển khai.", "bad");
-    delete window[callbackName];
-    script.remove();
-  };
+    script.src =
+      API_URL +
+      "?action=employees&callback=" +
+      encodeURIComponent(callbackName) +
+      "&t=" + Date.now();
 
-  script.src =
-    API_URL +
-    "?action=employees&callback=" +
-    encodeURIComponent(callbackName) +
-    "&t=" + Date.now();
-
-  document.body.appendChild(script);
+    document.body.appendChild(script);
+  });
 }
 
 async function loadModels() {
@@ -562,8 +587,10 @@ async function captureStableFace() {
   }
 }
 
+
 async function sendFaceData(descriptor) {
   const maNV = employee.value;
+
   const body = {
     action: "registerFace",
     maNV: maNV,
@@ -571,9 +598,11 @@ async function sendFaceData(descriptor) {
     faceData: JSON.stringify(descriptor)
   };
 
+  // Khóa nút ngay khi gửi, tránh bấm đăng ký lặp.
+  startBtn.disabled = true;
+  employee.disabled = true;
+
   try {
-    // no-cors không cho đọc phản hồi từ Apps Script.
-    // Vì vậy cần kiểm tra kết quả thực tế trong Google Sheets.
     await fetch(API_URL, {
       method: "POST",
       mode: "no-cors",
@@ -583,14 +612,43 @@ async function sendFaceData(descriptor) {
       body: JSON.stringify(body)
     });
 
-    say(
-      "Đã gửi dữ liệu đăng ký. Hãy kiểm tra FACE_ID, FACE_DATA và NGAY_DANG_KY_FACE trong Google Sheets trước khi đăng ký người tiếp theo.",
-      "good"
-    );
+    say("Đã gửi dữ liệu. Đang cập nhật danh sách nhân viên...", "wait");
+
+    // Cho Apps Script thời gian ghi dữ liệu trước khi tải lại.
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    const refreshed = await loadEmployees();
+
+    if (refreshed) {
+      // loadEmployees đã bỏ nhân viên có FACE_ID/FACE_DATA
+      // và xóa lựa chọn cũ.
+      employee.disabled = false;
+
+      if (employee.options.length <= 1) {
+        say(
+          "Đã gửi đăng ký. Danh sách hiện không còn nhân viên cần đăng ký. Hãy kiểm tra Google Sheets để xác nhận.",
+          "good"
+        );
+      } else {
+        say(
+          "Đã gửi đăng ký. Danh sách đã được cập nhật. Hãy kiểm tra Google Sheets để xác nhận dữ liệu.",
+          "good"
+        );
+      }
+    } else {
+      employee.disabled = false;
+      say(
+        "Đã gửi yêu cầu đăng ký nhưng chưa tải lại được danh sách. Hãy kiểm tra Google Sheets.",
+        "wait"
+      );
+    }
+
   } catch (err) {
+    employee.disabled = false;
     say("Không gửi được dữ liệu: " + err.message, "bad");
   } finally {
     scanning = false;
+    updateStartButton();
   }
 }
 
