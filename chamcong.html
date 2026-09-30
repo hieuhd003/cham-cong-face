@@ -485,11 +485,11 @@ function frontalCheck(landmarks, box) {
     return "Không thấy rõ hai mắt. Hãy nhìn thẳng camera.";
   }
 
-  if (Math.abs(nose.x - midX) / box.width > 0.075) {
+  if (Math.abs(nose.x - midX) / box.width > 0.12) {
     return "Bạn đang nhìn lệch. Hãy quay mặt thẳng vào camera.";
   }
 
-  if (Math.abs(left.y - right.y) / eyeDist > 0.13) {
+  if (Math.abs(left.y - right.y) / eyeDist > 0.18) {
     return "Bạn đang nghiêng đầu. Hãy giữ đầu thẳng.";
   }
 
@@ -517,8 +517,8 @@ async function inspect() {
 
   try {
    const options = new faceapi.TinyFaceDetectorOptions({
-  inputSize: 320,
-  scoreThreshold: 0.45
+  inputSize: 224,
+  scoreThreshold: 0.35
 });
 
 const found = await faceapi
@@ -597,7 +597,7 @@ const found = await faceapi
     guide.classList.remove("bad");
     guide.classList.add("ready");
 
-    if (stableFrames < 6) {
+    if (stableFrames < 4) {
       say(
         "Đúng tư thế. Giữ yên... " +
         stableFrames + "/10",
@@ -839,7 +839,7 @@ async function startCamera() {
     );
 
     /* Không cho các lượt nhận diện chạy chồng */
-    scanTimer = setInterval(inspect, 400);
+    scanTimer = setInterval(inspect, 250);
 
   } catch (e) {
     if (stream) {
