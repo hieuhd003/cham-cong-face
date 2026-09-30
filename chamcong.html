@@ -485,11 +485,11 @@ function frontalCheck(landmarks, box) {
     return "Không thấy rõ hai mắt. Hãy nhìn thẳng camera.";
   }
 
-  if (Math.abs(nose.x - midX) / box.width > 0.12) {
+  if (Math.abs(nose.x - midX) / box.width > 0.075) {
     return "Bạn đang nhìn lệch. Hãy quay mặt thẳng vào camera.";
   }
 
-  if (Math.abs(left.y - right.y) / eyeDist > 0.18) {
+  if (Math.abs(left.y - right.y) / eyeDist > 0.12) {
     return "Bạn đang nghiêng đầu. Hãy giữ đầu thẳng.";
   }
 
