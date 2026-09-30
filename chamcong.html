@@ -26,13 +26,21 @@ h2 { text-align: center; margin: 0 0 8px; }
   text-align: center; line-height: 1.5;
 }
 .camera {
-  position: relative; width: 100%; aspect-ratio: 1/1;
-  background: #080808; border-radius: 14px;
-  overflow: hidden; margin-top: 12px;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  background: #080808;
+  border-radius: 14px;
+  overflow: hidden;
+  margin-top: 12px;
 }
+
 video {
-  width: 100%; height: 100%;
-  object-fit: contain; display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  display: block;
+  transform: scaleX(-1);
 }
 .guide {
   position: absolute; width: 76%; height: 76%;
@@ -489,7 +497,22 @@ async function startCamera() {
     });
 
     video.srcObject = stream;
-    await video.play();
+
+await new Promise(resolve => {
+  if (video.readyState >= 1) {
+    resolve();
+  } else {
+    video.onloadedmetadata = () => resolve();
+  }
+});
+
+// Khớp tỷ lệ khung với video camera thật
+if (video.videoWidth && video.videoHeight) {
+  video.parentElement.style.aspectRatio =
+    video.videoWidth + " / " + video.videoHeight;
+}
+
+await video.play();
 
     running = true;
     busy = false;
