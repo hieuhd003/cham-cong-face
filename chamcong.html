@@ -429,28 +429,29 @@ async function checkStore() {
 
 /* Kiểm tra khuôn mặt có nằm trong vòng tròn */
 function inCircle(box) {
-  const videoWidth = video.videoWidth;
-  const videoHeight = video.videoHeight;
+  const w = video.videoWidth;
+  const h = video.videoHeight;
 
-  if (!videoWidth || !videoHeight) return false;
+  if (!w || !h) return false;
 
-  const points = [
-    [box.x, box.y],
-    [box.x + box.width, box.y],
-    [box.x, box.y + box.height],
-    [box.x + box.width, box.y + box.height]
-  ];
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
 
-  const yRadiusRatio =
-    0.38 * videoWidth / videoHeight;
+  // Tâm khuôn mặt so với tâm vòng tròn
+  const nx = (cx / w - 0.5) / 0.38;
+  const ny = (cy / h - 0.5) / (0.38 * w / h);
 
-  return points.every(([x, y]) => {
-    const nx = (x / videoWidth - 0.5) / 0.38;
-    const ny =
-      (y / videoHeight - 0.5) / yRadiusRatio;
+  // Không để mặt quá nhỏ hoặc quá lớn
+  const widthRatio = box.width / w;
+  const heightRatio = box.height / h;
 
-    return nx * nx + ny * ny <= 1;
-  });
+  return (
+    nx * nx + ny * ny <= 0.30 &&
+    widthRatio >= 0.16 &&
+    widthRatio <= 0.72 &&
+    heightRatio >= 0.16 &&
+    heightRatio <= 0.78
+  );
 }
 
 /* Kiểm tra hướng mặt */
@@ -515,16 +516,14 @@ async function inspect() {
   inspecting = true;
 
   try {
-    const found = await faceapi
-      .detectAllFaces(
-        video,
-        new faceapi.TinyFaceDetectorOptions({
-          inputSize: 320,
-          scoreThreshold: 0.78
-        })
-      )
-      .withFaceLandmarks()
-      .withFaceDescriptors();
+   const options = new faceapi.TinyFaceDetectorOptions({
+  inputSize: 320,
+  scoreThreshold: 0.45
+});
+
+const found = await faceapi
+  .detectAllFaces(video, options)
+  .withFaceLandmarks();
 
     if (!running) return;
 
@@ -598,7 +597,7 @@ async function inspect() {
     guide.classList.remove("bad");
     guide.classList.add("ready");
 
-    if (stableFrames < 10) {
+    if (stableFrames < 6) {
       say(
         "Đúng tư thế. Giữ yên... " +
         stableFrames + "/10",
