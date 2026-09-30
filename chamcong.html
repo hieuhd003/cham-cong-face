@@ -600,7 +600,7 @@ const found = await faceapi
     if (stableFrames < 6) {
       say(
         "Đúng tư thế. Giữ yên... " +
-        stableFrames + "/10",
+        stableFrames + "/6",
         "good"
       );
       return;
@@ -619,11 +619,43 @@ const found = await faceapi
       scanTimer = null;
     }
 
-    const descriptor =
-      Array.from(face.descriptor);
+   
+say("Đang lấy dữ liệu khuôn mặt...", "good");
 
-    stopCamera();
-    await submitAttendance(descriptor);
+// Tính descriptor ở bước cuối, không tính liên tục
+const verified = await faceapi
+  .detectSingleFace(video, options)
+  .withFaceLandmarks()
+  .withFaceDescriptor();
+
+if (!running) return;
+
+if (!verified || !verified.descriptor) {
+  resetStable();
+  busy = false;
+  updateStartButton();
+
+  say(
+    "Chưa lấy được dữ liệu khuôn mặt. " +
+    "Hãy nhìn thẳng và giữ yên, thử lại.",
+    "wait"
+  );
+  return;
+}
+
+const descriptor = Array.from(verified.descriptor);
+
+if (descriptor.length !== 128) {
+  resetStable();
+  busy = false;
+  updateStartButton();
+
+  say("Dữ liệu khuôn mặt không hợp lệ. Hãy thử lại.", "bad");
+  return;
+}
+
+stopCamera();
+await submitAttendance(descriptor);
 
   } catch (e) {
     resetStable();
@@ -839,7 +871,7 @@ async function startCamera() {
     );
 
     /* Không cho các lượt nhận diện chạy chồng */
-    scanTimer = setInterval(inspect, 400);
+    scanTimer = setInterval(inspect, 200);
 
   } catch (e) {
     if (stream) {
