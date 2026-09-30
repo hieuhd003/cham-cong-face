@@ -412,12 +412,12 @@ function checkFrontal(landmarks, faceBox) {
 function resetStability() {
   stableFrames = 0;
   lastCenter = null;
-  guide.classList.remove("ready");
+  guide.classList.remove("ready", "bad");
 }
 
 async function inspectFrame() {
   if (!running || scanning || inspecting) return;
-inspecting = true;
+  inspecting = true;
 
   try {
     if (video.readyState < 2 || !video.videoWidth) {
@@ -425,16 +425,7 @@ inspecting = true;
       return;
     }
 
-    if (!running || scanning) return;
-      .detectAllFaces(
-        video,
-        new faceapi.TinyFaceDetectorOptions({
-          inputSize: 320,
-          scoreThreshold: 0.75
-        })
-      )
-      .withFaceLandmarks()
-      .withFaceDescriptors();
+    const detections = await detectFaces();
 
     if (!running) return;
 
@@ -492,6 +483,7 @@ inspecting = true;
 
       if (movement > 0.025) {
         resetStability();
+        guide.classList.add("bad");
         say("Bạn giữ yên khuôn mặt, nhìn thẳng camera.", "wait");
         return;
       }
@@ -499,10 +491,12 @@ inspecting = true;
 
     lastCenter = { x: centerX, y: centerY };
     stableFrames++;
+
     guide.classList.remove("bad");
     guide.classList.add("ready");
 
     const needed = 12;
+
     if (stableFrames < needed) {
       say(
         "Đúng tư thế. Giữ yên và nhìn thẳng... " +
@@ -512,16 +506,16 @@ inspecting = true;
       return;
     }
 
-    // Chỉ bắt đầu lấy mẫu sau khi đã đạt điều kiện ổn định.
     await captureStableFace();
- } catch (err) {
-  resetStability();
-  say("Lỗi khi quét: " + err.message, "bad");
-} finally {
-  inspecting = false;
-}
-}
 
+  } catch (err) {
+    resetStability();
+    say("Lỗi khi quét: " + err.message, "bad");
+
+  } finally {
+    inspecting = false;
+  }
+}
 function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
