@@ -1,0 +1,788 @@
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Đăng ký khuôn mặt</title>
+
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 20px 12px;
+  font-family: Arial, sans-serif;
+  background: #f3f5f8;
+  color: #222;
+}
+
+.card {
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto;
+  padding: 18px;
+  background: white;
+  border-radius: 18px;
+  box-shadow: 0 5px 25px #00000012;
+}
+
+h2 {
+  text-align: center;
+  margin: 0 0 16px;
+}
+
+label {
+  display: block;
+  margin: 12px 0 7px;
+}
+
+select {
+  width: 100%;
+  padding: 13px;
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  font-size: 16px;
+  background: white;
+}
+
+.camera {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  margin-top: 14px;
+  background: #080808;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.camera video {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: 0;
+  outline: none;
+}
+
+.guide {
+  position: absolute;
+  width: 78%;
+  height: 78%;
+  left: 11%;
+  top: 11%;
+  border: 3px solid #16c45b;
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow: 0 0 0 999px #00000035;
+}
+
+.guide.bad {
+  border-color: #ff3b30;
+}
+
+.guide.ready {
+  border-color: #16c45b;
+  box-shadow: 0 0 0 999px #00000020, 0 0 18px #16c45b;
+}
+
+#status {
+  margin-top: 14px;
+  padding: 13px 10px;
+  border-radius: 10px;
+  background: #f0f2f5;
+  text-align: center;
+  line-height: 1.5;
+  min-height: 48px;
+}
+
+#status.good { background: #e8f7ed; color: #087a32; }
+#status.bad { background: #fff0f0; color: #bd2020; }
+#status.wait { background: #fff7df; color: #805b00; }
+
+.consent {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  line-height: 1.5;
+  margin: 14px 2px;
+}
+
+.consent input {
+  margin-top: 4px;
+  transform: scale(1.15);
+}
+
+button {
+  width: 100%;
+  padding: 15px;
+  border: 0;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+#startBtn { background: #111; color: white; }
+#stopBtn { background: #e9ecef; color: #222; display: none; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+
+.note {
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #666;
+}
+  #video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+</style>
+</head>
+
+<body>
+<div class="card">
+  <h2>Đăng ký khuôn mặt</h2>
+
+  <label for="employee">Chọn nhân viên</label>
+  <select id="employee">
+    <option value="">Đang tải danh sách...</option>
+  </select>
+
+  <div class="camera">
+  <video
+  id="video"
+  autoplay
+  muted
+  playsinline
+  webkit-playsinline
+  disablepictureinpicture
+></video>
+    <div id="guide" class="guide"></div>
+  </div>
+
+  <div id="status">Đang chuẩn bị hệ thống...</div>
+
+  <label class="consent">
+    <input type="checkbox" id="agree">
+    <span>
+      Tôi đồng ý đăng ký và sử dụng dữ liệu đặc trưng khuôn mặt
+      để xác minh chấm công.
+    </span>
+  </label>
+
+  <button id="startBtn" disabled>MỞ CAMERA VÀ QUÉT</button>
+  <button id="stopBtn">DỪNG CAMERA</button>
+
+  <div class="note">
+    Để đăng ký: nhìn thẳng vào camera, đưa toàn bộ khuôn mặt
+    vào trong vòng tròn và giữ yên. Hệ thống chỉ ghi nhận sau
+    khi khuôn mặt đạt điều kiện trong nhiều khung hình liên tiếp.
+  </div>
+</div>
+
+<script>
+const API_URL =
+  "https://script.google.com/macros/s/AKfycbwT0HEx6hAXVCINQIQLqb9ZDX1WZLjnP3vpU1cAgNyJp1W6SZBC8R1K2d__EcSuD5M/exec";
+
+const MODEL_URL =
+  "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights";
+
+const video = document.getElementById("video");
+const employee = document.getElementById("employee");
+const agree = document.getElementById("agree");
+const startBtn = document.getElementById("startBtn");
+const stopBtn = document.getElementById("stopBtn");
+const statusBox = document.getElementById("status");
+const guide = document.getElementById("guide");
+
+let stream = null;
+let running = false;
+let modelsReady = false;
+let scanning = false;
+let inspecting = false;
+let stableFrames = 0;
+let lastCenter = null;
+let scanTimer = null;
+
+const FACE_OPTIONS = {
+  inputSize: 224,
+  scoreThreshold: 0.35
+};
+
+function detectFaces() {
+  return faceapi
+    .detectAllFaces(
+      video,
+      new faceapi.TinyFaceDetectorOptions(FACE_OPTIONS)
+    )
+    .withFaceLandmarks()
+    .withFaceDescriptors();
+}
+
+function say(message, type = "") {
+  statusBox.textContent = message;
+  statusBox.className = type;
+}
+
+function updateStartButton() {
+  startBtn.disabled =
+    !modelsReady ||
+    !agree.checked ||
+    !employee.value ||
+    running ||
+    scanning ||
+    employee.disabled;
+}
+
+agree.addEventListener("change", updateStartButton);
+employee.addEventListener("change", updateStartButton);
+
+
+function loadEmployees() {
+  return new Promise(function(resolve) {
+    const callbackName =
+      "employeeCallback_" + Math.random().toString(36).slice(2);
+
+    const script = document.createElement("script");
+
+    employee.innerHTML =
+      '<option value="">Đang tải danh sách...</option>';
+    employee.value = "";
+    updateStartButton();
+
+    window[callbackName] = function(result) {
+      try {
+        if (!result || !result.success ||
+            !Array.isArray(result.data)) {
+          throw new Error("Danh sách nhân viên trả về không hợp lệ.");
+        }
+
+        employee.innerHTML =
+          '<option value="">-- Chọn nhân viên chưa đăng ký --</option>';
+
+        result.data.forEach(function(item) {
+          const option = document.createElement("option");
+          option.value = item.maNV;
+          option.textContent = item.maNV + " - " + item.hoTen;
+          employee.appendChild(option);
+        });
+
+        employee.value = "";
+        updateStartButton();
+
+        if (result.data.length === 0) {
+          say("Tất cả nhân viên đã đăng ký khuôn mặt.", "good");
+        } else {
+          say("Còn " + result.data.length +
+              " nhân viên chưa đăng ký khuôn mặt.");
+        }
+
+        resolve(true);
+      } catch (err) {
+        say("Lỗi danh sách: " + err.message, "bad");
+        resolve(false);
+      } finally {
+        delete window[callbackName];
+        script.remove();
+      }
+    };
+
+    script.onerror = function() {
+      say("Không tải được danh sách nhân viên. Hãy kiểm tra kết nối.", "bad");
+      delete window[callbackName];
+      script.remove();
+      resolve(false);
+    };
+
+    script.src =
+      API_URL +
+      "?action=employees&callback=" +
+      encodeURIComponent(callbackName) +
+      "&t=" + Date.now();
+
+    document.body.appendChild(script);
+  });
+}
+
+async function loadModels() {
+  try {
+    if (!window.faceapi) {
+      throw new Error("Không tải được thư viện nhận diện khuôn mặt.");
+    }
+
+    say("Đang tải mô hình nhận diện...");
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+    ]);
+
+    modelsReady = true;
+    say("Đã sẵn sàng. Chọn nhân viên và tích đồng ý để bắt đầu.");
+    updateStartButton();
+  } catch (err) {
+    say("Lỗi tải mô hình: " + err.message, "bad");
+  }
+}
+
+// Đổi tọa độ từ khung hình video sang khung hiển thị.
+// Video dùng object-fit: contain.
+function videoBox() {
+  const rect = video.getBoundingClientRect();
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+
+  const scale = Math.max(
+    rect.width / vw,
+    rect.height / vh
+  );
+
+  const width = vw * scale;
+  const height = vh * scale;
+
+  return {
+    left: rect.left + (rect.width - width) / 2,
+    top: rect.top + (rect.height - height) / 2,
+    width,
+    height,
+    scale
+  };
+}
+
+function faceInsideCircle(box) {
+  const guideRect = guide.getBoundingClientRect();
+  const centerX = guideRect.left + guideRect.width / 2;
+  const centerY = guideRect.top + guideRect.height / 2;
+  const radius = guideRect.width / 2;
+
+  const points = [
+    [box.left, box.top],
+    [box.right, box.top],
+    [box.left, box.bottom],
+    [box.right, box.bottom]
+  ];
+
+  return points.every(function(point) {
+    const dx = point[0] - centerX;
+    const dy = point[1] - centerY;
+    return Math.sqrt(dx * dx + dy * dy) <= radius;
+  });
+}
+
+function checkFrontal(landmarks, faceBox) {
+  const p = landmarks.positions;
+
+  // 68 điểm landmark của face-api:
+  // mắt trái 36-41, mắt phải 42-47, mũi 27-35.
+  const avg = function(indices) {
+    let x = 0, y = 0;
+    indices.forEach(i => {
+      x += p[i].x;
+      y += p[i].y;
+    });
+    return { x: x / indices.length, y: y / indices.length };
+  };
+
+  const leftEye = avg([36, 37, 38, 39, 40, 41]);
+  const rightEye = avg([42, 43, 44, 45, 46, 47]);
+  const nose = avg([30, 31, 32, 33, 34, 35]);
+
+  const eyeMidX = (leftEye.x + rightEye.x) / 2;
+  const eyeMidY = (leftEye.y + rightEye.y) / 2;
+  const eyeDistance = Math.abs(rightEye.x - leftEye.x);
+
+  if (eyeDistance < 1) {
+    return { ok: false, reason: "Không thấy rõ hai mắt. Hãy nhìn thẳng camera." };
+  }
+
+  // Mũi lệch khỏi trục giữa hai mắt thường là dấu hiệu quay đầu.
+  const yawOffset = Math.abs(nose.x - eyeMidX) / faceBox.width;
+
+  // Chênh cao hai mắt là dấu hiệu nghiêng đầu.
+  const rollOffset =
+    Math.abs(leftEye.y - rightEye.y) / eyeDistance;
+
+  if (yawOffset > 0.075) {
+    return { ok: false, reason: "Bạn hãy quay mặt thẳng vào camera, không nhìn lệch." };
+  }
+
+  if (rollOffset > 0.13) {
+    return { ok: false, reason: "Bạn hãy giữ đầu thẳng, không nghiêng." };
+  }
+
+  // Mắt nằm quá cao/thấp so với vùng mặt có thể do cúi/ngẩng.
+  const eyePosition =
+    (eyeMidY - faceBox.top) / faceBox.height;
+
+  if (eyePosition < 0.22 || eyePosition > 0.48) {
+    return { ok: false, reason: "Bạn hãy nhìn thẳng và giữ đầu ở tư thế tự nhiên." };
+  }
+
+  return { ok: true };
+}
+
+function resetStability() {
+  stableFrames = 0;
+  lastCenter = null;
+  guide.classList.remove("ready", "bad");
+}
+
+async function inspectFrame() {
+  if (!running || scanning || inspecting) return;
+  inspecting = true;
+
+  try {
+    if (video.readyState < 2 || !video.videoWidth) {
+      say("Đang khởi động camera...");
+      return;
+    }
+
+    const detections = await detectFaces();
+
+    if (!running) return;
+
+    if (detections.length === 0) {
+      resetStability();
+      guide.classList.add("bad");
+      say("Chưa thấy khuôn mặt. Hãy nhìn thẳng vào camera.", "wait");
+      return;
+    }
+
+    if (detections.length > 1) {
+      resetStability();
+      guide.classList.add("bad");
+      say("Chỉ để một người trong khung hình.", "bad");
+      return;
+    }
+
+    const result = detections[0];
+    const b = result.detection.box;
+    const vb = videoBox();
+
+    const faceBox = {
+      left: vb.left + b.x * vb.scale,
+      top: vb.top + b.y * vb.scale,
+      right: vb.left + (b.x + b.width) * vb.scale,
+      bottom: vb.top + (b.y + b.height) * vb.scale,
+      width: b.width,
+      height: b.height
+    };
+
+    if (!faceInsideCircle(faceBox)) {
+      resetStability();
+      guide.classList.add("bad");
+      say("Đưa TOÀN BỘ khuôn mặt vào trong vòng tròn xanh.", "wait");
+      return;
+    }
+
+    const frontal = checkFrontal(result.landmarks, b);
+
+    if (!frontal.ok) {
+      resetStability();
+      guide.classList.add("bad");
+      say(frontal.reason, "wait");
+      return;
+    }
+
+    const centerX = (b.x + b.width / 2) / video.videoWidth;
+    const centerY = (b.y + b.height / 2) / video.videoHeight;
+
+    if (lastCenter) {
+      const movement = Math.hypot(
+        centerX - lastCenter.x,
+        centerY - lastCenter.y
+      );
+
+      if (movement > 0.025) {
+        resetStability();
+        guide.classList.add("bad");
+        say("Bạn giữ yên khuôn mặt, nhìn thẳng camera.", "wait");
+        return;
+      }
+    }
+
+    lastCenter = { x: centerX, y: centerY };
+    stableFrames++;
+
+    guide.classList.remove("bad");
+    guide.classList.add("ready");
+
+    const needed = 12;
+
+    if (stableFrames < needed) {
+      say(
+        "Đúng tư thế. Giữ yên và nhìn thẳng... " +
+        stableFrames + "/" + needed,
+        "good"
+      );
+      return;
+    }
+
+    await captureStableFace();
+
+  } catch (err) {
+    resetStability();
+    say("Lỗi khi quét: " + err.message, "bad");
+
+  } finally {
+    inspecting = false;
+  }
+}
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function captureStableFace() {
+  if (scanning || !running) return;
+  scanning = true;
+
+  const descriptors = [];
+  say("Đang ghi nhận khuôn mặt. Hãy tiếp tục nhìn thẳng và giữ yên...", "good");
+
+  try {
+    for (let i = 0; i < 5; i++) {
+      if (!running) throw new Error("Đã dừng camera.");
+
+     const detections = await detectFaces();
+
+      if (detections.length !== 1) {
+        throw new Error("Khuôn mặt bị mất hoặc có người khác. Hãy quét lại.");
+      }
+
+      const d = detections[0];
+      const b = d.detection.box;
+      const vb = videoBox();
+      const mapped = {
+        left: vb.left + b.x * vb.scale,
+        top: vb.top + b.y * vb.scale,
+        right: vb.left + (b.x + b.width) * vb.scale,
+        bottom: vb.top + (b.y + b.height) * vb.scale
+      };
+
+      if (!faceInsideCircle(mapped)) {
+        throw new Error("Khuôn mặt ra khỏi vòng tròn. Hãy quét lại.");
+      }
+
+      const frontal = checkFrontal(d.landmarks, b);
+      if (!frontal.ok) throw new Error(frontal.reason);
+
+      descriptors.push(Array.from(d.descriptor));
+      await wait(220);
+    }
+
+    // Kiểm tra các mẫu có nhất quán không.
+    for (let i = 1; i < descriptors.length; i++) {
+      let sum = 0;
+      for (let j = 0; j < 128; j++) {
+        const diff = descriptors[i][j] - descriptors[0][j];
+        sum += diff * diff;
+      }
+      const distance = Math.sqrt(sum);
+
+      if (distance > 0.48) {
+        throw new Error("Khuôn mặt chưa ổn định. Vui lòng nhìn thẳng và quét lại.");
+      }
+    }
+
+    const average = new Array(128).fill(0);
+    descriptors.forEach(desc => {
+      desc.forEach((value, i) => average[i] += value / descriptors.length);
+    });
+
+    stopCamera();
+    say("Đã quét đạt điều kiện. Đang gửi dữ liệu đăng ký...", "good");
+
+    await sendFaceData(average);
+
+  } catch (err) {
+    scanning = false;
+    if (running) {
+      resetStability();
+      say(err.message + " Hãy đặt lại khuôn mặt vào vòng tròn.", "bad");
+    }
+  }
+}
+
+
+async function sendFaceData(descriptor) {
+  const maNV = employee.value;
+
+  const body = {
+    action: "registerFace",
+    maNV: maNV,
+    faceId: "FACE_" + maNV,
+    faceData: JSON.stringify(descriptor)
+  };
+
+  // Khóa nút ngay khi gửi, tránh bấm đăng ký lặp.
+  startBtn.disabled = true;
+  employee.disabled = true;
+
+  try {
+    await fetch(API_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8"
+      },
+      body: JSON.stringify(body)
+    });
+
+    say("Đã gửi dữ liệu. Đang cập nhật danh sách nhân viên...", "wait");
+
+    // Cho Apps Script thời gian ghi dữ liệu trước khi tải lại.
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    const refreshed = await loadEmployees();
+
+    if (refreshed) {
+      // loadEmployees đã bỏ nhân viên có FACE_ID/FACE_DATA
+      // và xóa lựa chọn cũ.
+      employee.disabled = false;
+
+      if (employee.options.length <= 1) {
+        say(
+          "Đã gửi đăng ký. Danh sách hiện không còn nhân viên cần đăng ký. Hãy kiểm tra Google Sheets để xác nhận.",
+          "good"
+        );
+      } else {
+        say(
+          "Đã gửi đăng ký. Danh sách đã được cập nhật. Hãy kiểm tra Google Sheets để xác nhận dữ liệu.",
+          "good"
+        );
+      }
+    } else {
+      employee.disabled = false;
+      say(
+        "Đã gửi yêu cầu đăng ký nhưng chưa tải lại được danh sách. Hãy kiểm tra Google Sheets.",
+        "wait"
+      );
+    }
+
+  } catch (err) {
+    employee.disabled = false;
+    say("Không gửi được dữ liệu: " + err.message, "bad");
+  } finally {
+    scanning = false;
+    updateStartButton();
+  }
+}
+
+async function startCamera() {
+  if (!agree.checked) {
+    say("Bạn cần tích đồng ý trước khi mở camera.", "bad");
+    return;
+  }
+
+  if (!employee.value) {
+    say("Vui lòng chọn nhân viên trước.", "bad");
+    return;
+  }
+
+  if (!modelsReady) {
+    say("Mô hình chưa sẵn sàng. Vui lòng đợi.", "wait");
+    return;
+  }
+
+  try {
+    if (!navigator.mediaDevices ||
+        !navigator.mediaDevices.getUserMedia) {
+      throw new Error("Trình duyệt không hỗ trợ mở camera.");
+    }
+
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: "user",
+        width: { ideal: 640 },
+        height: { ideal: 480 },
+        frameRate: { ideal: 24, max: 30 }
+      }
+    });
+
+    video.setAttribute("playsinline", "");
+    video.setAttribute("webkit-playsinline", "");
+    video.removeAttribute("controls");
+    video.playsInline = true;
+    video.muted = true;
+    video.srcObject = stream;
+
+    await video.play();
+
+    running = true;
+    scanning = false;
+    inspecting = false;
+    resetStability();
+
+    startBtn.style.display = "none";
+    stopBtn.style.display = "block";
+
+    say(
+      "Hãy đưa toàn bộ khuôn mặt vào vòng tròn xanh, nhìn thẳng camera và giữ yên.",
+      "wait"
+    );
+
+    if (scanTimer) {
+      clearInterval(scanTimer);
+    }
+
+    scanTimer = setInterval(inspectFrame, 250);
+
+  } catch (err) {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+
+    video.srcObject = null;
+
+    say(
+      "Không mở được camera. Hãy kiểm tra quyền camera. " +
+      err.message,
+      "bad"
+    );
+  }
+}
+
+function stopCamera() {
+  running = false;
+inspecting = false;
+scanning = false;
+
+  if (scanTimer) {
+    clearInterval(scanTimer);
+    scanTimer = null;
+  }
+
+  if (stream) {
+    stream.getTracks().forEach(track => track.stop());
+    stream = null;
+  }
+
+  video.srcObject = null;
+  startBtn.style.display = "block";
+  stopBtn.style.display = "none";
+  resetStability();
+  updateStartButton();
+}
+
+startBtn.addEventListener("click", startCamera);
+stopBtn.addEventListener("click", function() {
+  stopCamera();
+  say("Đã dừng camera.");
+});
+
+loadEmployees();
+loadModels();
+</script>
+</body>
+</html>
