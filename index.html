@@ -354,25 +354,37 @@
     }
 
     async function loadModels() {
-      try {
-        if (!window.faceapi) {
-          throw new Error("Không tải được thư viện nhận diện khuôn mặt.");
-        }
-
-        say("Đang tải mô hình nhận diện...");
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-        ]);
-
-        modelsReady = true;
-        say("Đã sẵn sàng. Chọn nhân viên và tích đồng ý để bắt đầu.");
-        updateStartButton();
-      } catch (err) {
-        say("Lỗi tải mô hình: " + err.message + ". Hãy kiểm tra mạng rồi tải lại trang.", "bad");
-      }
+  try {
+    if (!window.faceapi) {
+      throw new Error("Không tải được thư viện nhận diện khuôn mặt.");
     }
+
+    say("Đang tải mô hình nhận diện...");
+
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+    ]);
+
+    modelsReady = true;
+    updateStartButton();
+
+    say(
+      "Đã tải mô hình thành công. Chọn nhân viên, tích đồng ý và mở camera."
+    );
+  } catch (err) {
+    modelsReady = false;
+    updateStartButton();
+
+    say(
+      "Lỗi tải mô hình: " + (err.message || err),
+      "bad"
+    );
+
+    console.error("Lỗi loadModels:", err);
+  }
+}
 
     // Chuyển tọa độ ảnh video sang vị trí hiển thị khi object-fit: cover.
     function videoBox() {
