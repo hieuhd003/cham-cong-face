@@ -355,61 +355,53 @@
 
    
 
+
 async function loadModels() {
   modelsReady = false;
   updateStartButton();
-
-  say("Đang tải mô hình nhận diện khuôn mặt...", "wait");
-
-  if (!window.faceapi) {
-    say("Không tải được thư viện face-api.js. Hãy tải lại trang.", "bad");
-    return;
-  }
-
-  const models = [
-    ["TinyFaceDetector", faceapi.nets.tinyFaceDetector],
-    ["FaceLandmark68", faceapi.nets.faceLandmark68Net],
-    ["FaceRecognition", faceapi.nets.faceRecognitionNet]
-  ];
+  say("Đang tải mô hình nhận diện khuôn mặt...");
 
   try {
-    for (const [name, net] of models) {
-      let loaded = false;
-      let lastError = null;
+    if (!window.faceapi) {
+      throw new Error("Thư viện face-api.js chưa tải được.");
+    }
 
-      // Thử tải tối đa 3 lần nếu mạng gặp lỗi tạm thời.
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          await net.loadFromUri(MODEL_URL);
-          loaded = true;
-          console.log("Đã tải mô hình:", name);
-          break;
-        } catch (err) {
-          lastError = err;
-          console.warn(
-            "Lỗi tải " + name + ", lần " + attempt,
-            err
-          );
-
-          if (attempt < 3) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        }
+    const modelFiles = [
+      {
+        name: "TinyFaceDetector",
+        load: () => faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL)
+      },
+      {
+        name: "FaceLandmark68",
+        load: () => faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL)
+      },
+      {
+        name: "FaceRecognition",
+        load: () => faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
       }
+    ];
 
-      if (!loaded) {
-        throw new Error(
-          "Không tải được mô hình " + name + ": " +
-          (lastError?.message || "Lỗi mạng")
-        );
-      }
+    for (const model of modelFiles) {
+      say("Đang tải mô hình " + model.name + "...");
+      await model.load();
+      console.log("Đã tải:", model.name);
+    }
+
+    // Chỉ mở khóa khi cả 3 mô hình đã tải thành công.
+    const allLoaded =
+      faceapi.nets.tinyFaceDetector.isLoaded &&
+      faceapi.nets.faceLandmark68Net.isLoaded &&
+      faceapi.nets.faceRecognitionNet.isLoaded;
+
+    if (!allLoaded) {
+      throw new Error("Một hoặc nhiều mô hình chưa tải hoàn tất.");
     }
 
     modelsReady = true;
     updateStartButton();
 
     say(
-      "Mô hình đã sẵn sàng. Chọn nhân viên, tích đồng ý và mở camera.",
+      "Đã sẵn sàng. Chọn nhân viên và tích đồng ý để bắt đầu.",
       "good"
     );
 
@@ -419,12 +411,8 @@ async function loadModels() {
     modelsReady = false;
     updateStartButton();
 
-    say(
-      "Chưa tải được mô hình nhận diện. Hãy kiểm tra mạng và tải lại trang.",
-      "bad"
-    );
-
-    console.error("LỖI LOAD MODELS:", err);
+    say("Lỗi tải mô hình: " + err.message, "bad");
+    console.error("Lỗi loadModels:", err);
   }
 }
     // Chuyển tọa độ ảnh video sang vị trí hiển thị khi object-fit: cover.
